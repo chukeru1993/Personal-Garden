@@ -1,0 +1,23 @@
+.DS_Store
+**/.DS_Store
+
+# Environment variables and local credentials
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.local
+
+# Dependencies and generated output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Supabase local CLI state
+app/supabase/.temp/
+
+# Logs
+*.log
