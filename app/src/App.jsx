@@ -128,12 +128,18 @@ function AuthProvider({ children }) {
   )
 }
 
-function useData() {
+const DataContext = createContext(null)
+
+function DataProvider({ children }) {
   const { user } = useAuth()
   const [state, setState] = useState({ projects: [], cards: [], tags: [], loading: true, error: null })
+  const loadedForRef = useRef(null)
+  const inFlightRef = useRef(null)
 
   const reload = useCallback(async (allowSeed = true) => {
     if (!user) return
+    if (inFlightRef.current) return inFlightRef.current
+
     const load = async (seedAllowed) => {
       const [projects, tags, cards] = await Promise.all([
         api.listProjects(user),
@@ -157,14 +163,29 @@ function useData() {
         }
       }
     }
-    await load(allowSeed)
+
+    const task = load(allowSeed).finally(() => {
+      inFlightRef.current = null
+    })
+    inFlightRef.current = task
+    return task
   }, [user?.id])
 
   useEffect(() => {
-    reload()
-  }, [reload])
+    if (!user) return
+    if (loadedForRef.current !== user.id) {
+      loadedForRef.current = user.id
+      reload()
+    }
+  }, [user?.id, reload])
 
-  return { ...state, reload }
+  return <DataContext.Provider value={{ ...state, reload }}>{children}</DataContext.Provider>
+}
+
+function useData() {
+  const context = useContext(DataContext)
+  if (!context) throw new Error('useData must be used inside DataProvider')
+  return context
 }
 
 async function mutate(action, reload) {
@@ -1136,7 +1157,11 @@ function ProtectedRoute() {
   const { user, loading } = useAuth()
   if (loading) return <div className="loading">加载中…</div>
   if (!user) return <Navigate to="/login" replace />
-  return <AppShell />
+  return (
+    <DataProvider>
+      <AppShell />
+    </DataProvider>
+  )
 }
 
 export default function App() {
