@@ -771,6 +771,7 @@ function AppShell() {
           <NavButton to="/" end><span>01</span> Dashboard</NavButton>
           <NavButton to="/projects"><span>02</span> Projects</NavButton>
           <NavButton to="/library"><span>03</span> Library</NavButton>
+          <NavButton to="/growth"><span>04</span> Growth</NavButton>
         </nav>
         <div className="sidebar-foot">
           <div className="user-line">{user?.email || '本地演示'}</div>
@@ -784,6 +785,7 @@ function AppShell() {
             <NavButton to="/" end>首页</NavButton>
             <NavButton to="/projects">项目</NavButton>
             <NavButton to="/library">知识库</NavButton>
+            <NavButton to="/growth">生长</NavButton>
           </nav>
           <button className="text-button" onClick={signOut}>退出登录</button>
         </div>
@@ -1243,7 +1245,6 @@ function TagManagePage() {
       <div className="breadcrumb"><Goto className="breadcrumb-link" to="/library">LIBRARY</Goto> / TAGS</div>
       <div className="page-head">
         <div>
-          <p className="eyebrow">LIBRARY / TAGS</p>
           <h1>标签管理</h1>
           <p className="page-sub">标签是可维护的类别；卡片里只做选择，不在这里写正文。</p>
         </div>
@@ -1278,6 +1279,206 @@ function TagManagePage() {
             }}
           />
         </Modal>
+      )}
+    </div>
+  )
+}
+
+function GrowthMapPage() {
+  const { projects, cards, tags, loading, error } = useData()
+  const navigate = useNavigate()
+  const [progress, setProgress] = useState(100)
+  const [mode, setMode] = useState('all')
+  const [tagFilter, setTagFilter] = useState('')
+  const [selectedCard, setSelectedCard] = useState(null)
+  const [hoveredProjectId, setHoveredProjectId] = useState(null)
+
+  const rootColors = { sage: '#A5B196', slate: '#8FA6B4', terracotta: '#C69A82', neutral: '#B4B2A9' }
+
+  const timeRange = useMemo(() => {
+    const values = [
+      ...cards.map((card) => Date.parse(card.created_at)).filter(Number.isFinite),
+      ...projects.map((project) => Date.parse(project.created_at)).filter(Number.isFinite),
+    ]
+    if (!values.length) {
+      const now = Date.now()
+      return { min: now - 86400000, max: now }
+    }
+    return { min: Math.min(...values), max: Math.max(...values) }
+  }, [cards, projects])
+
+  const cursor = timeRange.min + (timeRange.max - timeRange.min) * progress / 100
+
+  const visibleCards = useMemo(() => cards.filter((card) => {
+    const created = Date.parse(card.created_at)
+    if (Number.isFinite(created) && created > cursor) return false
+    if (mode === 'linked' && !(card.project_ids || []).length) return false
+    if (mode === 'unlinked' && (card.project_ids || []).length) return false
+    if (tagFilter && !(card.tags || []).includes(tagFilter)) return false
+    return true
+  }), [cards, cursor, mode, tagFilter])
+
+  const visibleProjects = useMemo(() => projects.filter((project) => {
+    const created = Date.parse(project.created_at)
+    return !Number.isFinite(created) || created <= cursor
+  }), [projects, cursor])
+
+  const projectPositions = useMemo(() => {
+    const map = {}
+    const ordered = [...projects].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    ordered.forEach((project, index) => {
+      map[project.id] = {
+        x: ordered.length === 1 ? 500 : 120 + index * (760 / (ordered.length - 1)),
+        y: 126 + (index % 3) * 34,
+      }
+    })
+    return map
+  }, [projects])
+
+  const roots = useMemo(() => visibleCards.map((card, index) => {
+    const primaryProject = (card.project_ids || [])[0]
+    const baseX = projectPositions[primaryProject]?.x ?? (90 + ((index * 97) % 820))
+    const x = Math.max(60, Math.min(940, baseX + ((index * 43) % 170) - 85))
+    const y = 382 + ((index * 71) % 176)
+    const path = `M 500 320 C ${500 + (x - 500) * 0.2} 350, ${x + (500 - x) * 0.15} ${y - 60}, ${x} ${y}`
+    const tag = tags.find((item) => (card.tags || [])[0] === item.id)
+    return { card, x, y, path, color: rootColors[tag?.color] || rootColors.neutral }
+  }), [visibleCards, projectPositions, tags])
+
+  const focusedProject = hoveredProjectId ? projects.find((project) => project.id === hoveredProjectId) : null
+  const focusedCards = focusedProject ? visibleCards.filter((card) => (card.project_ids || []).includes(focusedProject.id)) : []
+  const unlinkedCount = visibleCards.filter((card) => !(card.project_ids || []).length).length
+
+  if (loading) return <div className="loading">加载中…</div>
+  if (error) return <div className="error-box">{error}</div>
+
+  return (
+    <div className="page growth-page">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">GROWTH MAP</p>
+          <h1>生长图谱</h1>
+          <p className="page-sub">卡片是根系，项目是枝。拖动时间轴，看见知识如何长成方向。</p>
+        </div>
+      </div>
+
+      <div className="growth-toolbar">
+        <div className="growth-modes" role="group" aria-label="根系范围">
+          <button type="button" className={`growth-chip ${mode === 'all' ? 'active' : ''}`} onClick={() => setMode('all')}>全部根系</button>
+          <button type="button" className={`growth-chip ${mode === 'linked' ? 'active' : ''}`} onClick={() => setMode('linked')}>已归属</button>
+          <button type="button" className={`growth-chip ${mode === 'unlinked' ? 'active' : ''}`} onClick={() => setMode('unlinked')}>未归属</button>
+        </div>
+        <div className="growth-filter">
+          <Select value={tagFilter} onChange={setTagFilter} options={[{ value: '', label: '全部标签' }, ...tags.map((tag) => ({ value: tag.id, label: tag.name }))]} label="按标签筛选根系" />
+        </div>
+        <div className="growth-stats">
+          <span>根系 <strong>{visibleCards.length}</strong> / {cards.length}</span>
+          <span>枝 <strong>{visibleProjects.length}</strong> / {projects.length}</span>
+          <span>游离根 <strong>{unlinkedCount}</strong></span>
+        </div>
+      </div>
+
+      {!cards.length && !projects.length ? (
+        <EmptyState title="还没有可生长的数据" description="先添加知识卡片或项目，这里会按时间呈现它们的生长过程。" />
+      ) : (
+        <>
+          <div className="growth-body">
+            <div className="growth-canvas-wrap">
+              <svg className="growth-canvas" viewBox="0 0 1000 600" role="img" aria-label="根系与分支生长图谱">
+                <path d="M60 320H940" fill="none" stroke="#B4B2A9" strokeWidth="0.5" strokeDasharray="4 5" />
+                <text x="70" y="310" fontSize="12" fill="#5F5E5A" fontFamily="var(--font-sans)">地表</text>
+
+                <path d="M500 320 C500 270 496 220 502 172 C506 138 504 112 500 92" fill="none" stroke="#3B6D11" strokeWidth="3" strokeLinecap="round" />
+
+                {visibleProjects.map((project, index) => {
+                  const pos = projectPositions[project.id]
+                  const attachY = 250 - index * 6
+                  const path = `M 500 320 C 500 ${attachY + 20}, ${pos.x} ${pos.y + 50}, ${pos.x} ${pos.y}`
+                  const active = hoveredProjectId === project.id
+                  return (
+                    <g
+                      key={project.id}
+                      className="growth-branch"
+                      onMouseEnter={() => setHoveredProjectId(project.id)}
+                      onMouseLeave={() => setHoveredProjectId(null)}
+                      onClick={() => navigate(`/projects/${project.id}`)}
+                    >
+                      <path d={path} fill="none" stroke="#3B6D11" strokeWidth={active ? 2.6 : 1.8} opacity={active ? 1 : 0.78} />
+                      <ellipse cx={pos.x} cy={pos.y} rx="17" ry="10" fill={project.featured ? '#C0DD97' : '#EAF3DE'} stroke="#3B6D11" strokeWidth="0.5" />
+                      <text x={pos.x} y={pos.y - 20} textAnchor="middle" fontSize="12" fill="#2C2C2A" fontFamily="var(--font-sans)">{project.name}</text>
+                    </g>
+                  )
+                })}
+
+                {roots.map(({ card, x, y, path, color }) => {
+                  const dim = Boolean(hoveredProjectId) && !(card.project_ids || []).includes(hoveredProjectId)
+                  const active = selectedCard?.id === card.id
+                  return (
+                    <g
+                      key={card.id}
+                      className="growth-root"
+                      opacity={dim ? 0.16 : 1}
+                      onClick={() => setSelectedCard(active ? null : card)}
+                    >
+                      <path d={path} fill="none" stroke={color} strokeWidth={active ? 2.4 : 1.3} />
+                      <circle cx={x} cy={y} r={active ? 6 : 4} fill="#FFFDF8" stroke={color} strokeWidth="1.2" />
+                    </g>
+                  )
+                })}
+              </svg>
+            </div>
+
+            <aside className="growth-detail">
+              {selectedCard ? (
+                <>
+                  <p className="eyebrow">选中根须</p>
+                  <h3>{selectedCard.title}</h3>
+                  <p className="growth-detail-text">{selectedCard.description || '还没有写描述。'}</p>
+                  <div className="growth-detail-meta">
+                    <span>{resourceLabel(selectedCard.resource_type)}</span>
+                    <span>{formatDate(selectedCard.created_at)}</span>
+                  </div>
+                  <div className="growth-detail-tags">
+                    {(selectedCard.tags || []).map((tagId) => {
+                      const tag = tags.find((item) => item.id === tagId)
+                      return tag ? <span key={tag.id} className={`tag-chip tag-${tag.color}`}>{tag.name}</span> : null
+                    })}
+                  </div>
+                  <a className="text-button" href={selectedCard.url} target="_blank" rel="noopener noreferrer">打开资源 ↗</a>
+                </>
+              ) : focusedProject ? (
+                <>
+                  <p className="eyebrow">当前枝</p>
+                  <h3>{focusedProject.name}</h3>
+                  <p className="growth-detail-text">{focusedProject.description || '还没有写项目说明。'}</p>
+                  <p className="growth-detail-count">当前视角下，这根枝由 <strong>{focusedCards.length}</strong> 条根须供养。</p>
+                  <ul className="growth-detail-list">
+                    {focusedCards.slice(0, 4).map((card) => <li key={card.id}>{card.title}</li>)}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="eyebrow">如何阅读</p>
+                  <h3>根先长，枝后生</h3>
+                  <p className="growth-detail-text">下方每一个点是一张知识卡片；上方每一个叶结是一个项目。把鼠标移到枝上，可以看到哪些根系在供养它。</p>
+                  <p className="growth-detail-text">这不是因果关系图，而是你自己的生长记录。</p>
+                </>
+              )}
+            </aside>
+          </div>
+
+          <div className="growth-timeline">
+            <div className="growth-timeline-head">
+              <span>时间轴</span>
+              <strong>{formatDate(new Date(cursor).toISOString())}</strong>
+            </div>
+            <input type="range" min="0" max="100" value={progress} onChange={(event) => setProgress(Number(event.target.value))} aria-label="生长时间轴" />
+            <div className="growth-timeline-labels">
+              <span>{formatDate(new Date(timeRange.min).toISOString())}</span>
+              <span>现在</span>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
@@ -1352,6 +1553,7 @@ export default function App() {
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
                 <Route path="/library" element={<LibraryPage />} />
                 <Route path="/library/tags" element={<TagManagePage />} />
+                <Route path="/growth" element={<GrowthMapPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
