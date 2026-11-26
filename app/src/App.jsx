@@ -519,6 +519,34 @@ function CardRow({ card, projectsById, tagsById, onEdit, onDelete, onDetach, onR
   )
 }
 
+function KnowledgeCardTile({ card, tagsById, onEdit, onDetach }) {
+  const tags = (card.tags || []).map((id) => tagsById[id]).filter(Boolean)
+  return (
+    <article className="knowledge-card-tile">
+      <div className="card-tile-top">
+        <span className={`type-chip type-${card.resource_type}`}>{resourceLabel(card.resource_type)}</span>
+        <a className="card-tile-open" href={card.url} target="_blank" rel="noopener noreferrer" aria-label={`打开 ${card.title}`}>↗</a>
+      </div>
+      <h3 className="card-tile-title">
+        <a href={card.url} target="_blank" rel="noopener noreferrer">{card.title}</a>
+      </h3>
+      {card.description && <p className="card-tile-description">{card.description}</p>}
+      {tags.length > 0 && (
+        <div className="tag-list card-tile-tags">
+          {tags.slice(0, 3).map((tag) => (
+            <span key={tag.id} className={`tag-chip tag-${tag.color}`}>{tag.name}</span>
+          ))}
+          {tags.length > 3 && <span className="tag-chip tag-neutral">+{tags.length - 3}</span>}
+        </div>
+      )}
+      <div className="card-tile-actions">
+        <button className="text-button" onClick={onEdit}>编辑</button>
+        <button className="text-button danger" onClick={onDetach}>从项目移除</button>
+      </div>
+    </article>
+  )
+}
+
 function useSaving() {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
@@ -1041,12 +1069,11 @@ function ProjectDetailPage() {
           <span className="muted">{projectCards.length} 条资料</span>
         </div>
         {projectCards.length ? (
-          <div className="card-list">
+          <div className="project-card-grid">
             {projectCards.map((card) => (
-              <CardRow
+              <KnowledgeCardTile
                 key={card.id}
                 card={card}
-                projectsById={projectsById}
                 tagsById={tagsById}
                 onEdit={() => setCardModal(card)}
                 onDetach={() => detach(card)}

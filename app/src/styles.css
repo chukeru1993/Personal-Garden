@@ -145,6 +145,18 @@ p { margin: 0; }
 .card-project-label .project-icon-badge svg { width: 14px; height: 14px; }
 .project-card h3 { font-size: 16px; margin-bottom: 4px; }
 .project-card p { color: var(--muted); font-size: 13px; min-height: 42px; }
+.project-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.knowledge-card-tile { display: flex; flex-direction: column; min-height: 184px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease; }
+.knowledge-card-tile:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); border-color: #D8CEBE; }
+.card-tile-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.card-tile-open { color: var(--muted); font-size: 14px; text-decoration: none; }
+.card-tile-open:hover { color: var(--text); }
+.card-tile-title { font-size: 15px; line-height: 1.45; margin-bottom: 8px; overflow-wrap: anywhere; }
+.card-tile-title a { color: var(--text); text-decoration: none; }
+.card-tile-title a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.card-tile-description { margin-bottom: 14px; color: var(--muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card-tile-tags { margin-top: auto; margin-bottom: 12px; }
+.card-tile-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .project-card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
 .soft-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #EDF1E7; color: #536147; }
 
@@ -330,6 +342,10 @@ p { margin: 0; }
   .tag-table-row { grid-template-columns: 1fr auto; }
   .tag-table-row > :nth-child(2) { display: none; }
   .library-search .search-input { min-width: 0; }
+}
+
+@media (max-width: 980px) {
+  .project-card-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 1100px) {
