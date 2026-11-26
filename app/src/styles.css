@@ -92,6 +92,7 @@ p { margin: 0; }
 .eyebrow { font-size: 10px; letter-spacing: .16em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
 .breadcrumb { font-size: 11px; letter-spacing: .12em; color: var(--muted); margin-bottom: 24px; }
 .breadcrumb button { padding: 0; border: 0; background: transparent; color: inherit; font-size: inherit; letter-spacing: inherit; cursor: pointer; }
+.breadcrumb .breadcrumb-link { text-decoration: underline; text-decoration-color: #B9AD9D; text-underline-offset: 3px; }
 .breadcrumb button:hover { color: var(--text); }
 
 .hero {

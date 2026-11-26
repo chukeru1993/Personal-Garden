@@ -519,6 +519,23 @@ function CardRow({ card, projectsById, tagsById, onEdit, onDelete, onDetach, onR
   )
 }
 
+function useSaving() {
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const run = useCallback(async (task) => {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    try {
+      await task()
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }, [])
+  return { saving, run }
+}
+
 function ProjectForm({ initial, onSubmit, onCancel }) {
   const [form, setForm] = useState({
     name: '',
@@ -529,19 +546,20 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
     ...initial,
   })
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const { saving, run } = useSaving()
 
   return (
     <form
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault()
         if (!form.name.trim()) {
           showToast('请填写项目名称', 'error')
           return
         }
-        onSubmit({
+        await run(() => onSubmit({
           ...form,
           name: form.name.trim(),
-        })
+        }))
       }}
     >
       <label className="field">
@@ -581,8 +599,8 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
         <span>在首页展示</span>
       </label>
       <div className="form-actions">
-        <button type="button" className="button secondary" onClick={onCancel}>取消</button>
-        <button type="submit" className="button primary">保存项目</button>
+        <button type="button" className="button secondary" disabled={saving} onClick={onCancel}>取消</button>
+        <button type="submit" className="button primary" disabled={saving}>{saving ? '保存中…' : '保存项目'}</button>
       </div>
     </form>
   )
@@ -607,10 +625,11 @@ function CardForm({ initial, projects, tags, onSubmit, onCancel, onDelete }) {
       ? prev.project_ids.filter((item) => item !== id)
       : [...(prev.project_ids || []), id],
   }))
+  const { saving, run } = useSaving()
 
   return (
     <form
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault()
         if (!form.title.trim()) {
           showToast('请填写标题', 'error')
@@ -620,10 +639,10 @@ function CardForm({ initial, projects, tags, onSubmit, onCancel, onDelete }) {
           showToast('请填写有效的 http(s) 链接', 'error')
           return
         }
-        onSubmit(
+        await run(() => onSubmit(
           { ...form, title: form.title.trim(), url: form.url.trim(), project_ids: form.project_ids || [] },
           selectedTags,
-        )
+        ))
       }}
     >
       <label className="field">
@@ -677,9 +696,9 @@ function CardForm({ initial, projects, tags, onSubmit, onCancel, onDelete }) {
         )}
       </div>
       <div className="form-actions">
-        {onDelete && <button type="button" className="text-button danger modal-delete-action" onClick={onDelete}>删除卡片</button>}
-        <button type="button" className="button secondary" onClick={onCancel}>取消</button>
-        <button type="submit" className="button primary">保存卡片</button>
+        {onDelete && <button type="button" className="text-button danger modal-delete-action" disabled={saving} onClick={onDelete}>删除卡片</button>}
+        <button type="button" className="button secondary" disabled={saving} onClick={onCancel}>取消</button>
+        <button type="submit" className="button primary" disabled={saving}>{saving ? '保存中…' : '保存卡片'}</button>
       </div>
     </form>
   )
@@ -693,16 +712,17 @@ function TagForm({ initial, onSubmit, onCancel }) {
     ...initial,
   })
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const { saving, run } = useSaving()
 
   return (
     <form
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault()
         if (!form.name.trim()) {
           showToast('请填写标签名称', 'error')
           return
         }
-        onSubmit({ ...form, name: form.name.trim(), sort_order: Number(form.sort_order || 0) })
+        await run(() => onSubmit({ ...form, name: form.name.trim(), sort_order: Number(form.sort_order || 0) }))
       }}
     >
       <label className="field">
@@ -727,8 +747,8 @@ function TagForm({ initial, onSubmit, onCancel }) {
         <span className="muted small">{TAG_COLORS.find((item) => item.value === form.color)?.label || '中性色'}</span>
       </label>
       <div className="form-actions">
-        <button type="button" className="button secondary" onClick={onCancel}>取消</button>
-        <button type="submit" className="button primary">保存标签</button>
+        <button type="button" className="button secondary" disabled={saving} onClick={onCancel}>取消</button>
+        <button type="submit" className="button primary" disabled={saving}>{saving ? '保存中…' : '保存标签'}</button>
       </div>
     </form>
   )
@@ -1220,6 +1240,7 @@ function TagManagePage() {
 
   return (
     <div className="page">
+      <div className="breadcrumb"><Goto className="breadcrumb-link" to="/library">LIBRARY</Goto> / TAGS</div>
       <div className="page-head">
         <div>
           <p className="eyebrow">LIBRARY / TAGS</p>
@@ -1246,7 +1267,6 @@ function TagManagePage() {
       ) : (
         <EmptyState title="还没有标签类别" description="先建几个类别，维护卡片时就可以直接选择了。" action={<button className="button primary" onClick={() => setModal({ mode: 'new' })}>新建标签</button>} />
       )}
-      <div className="back-link"><Goto to="/library">← 返回 Library</Goto></div>
       {modal && (
         <Modal title={modal.mode === 'new' ? '新建标签' : '编辑标签'} onClose={() => setModal(null)}>
           <TagForm
