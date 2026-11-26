@@ -2,12 +2,12 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Brain, BookOpen, Bot, Clapperboard, Code, Lightbulb, Microscope, Search, Sprout } from 'lucide-react'
 import {
   BrowserRouter,
-  Link,
-  NavLink,
   Navigate,
   Outlet,
   Route,
   Routes,
+  useLocation,
+  useNavigate,
   useParams,
 } from 'react-router-dom'
 import { api } from './lib/store'
@@ -191,7 +191,7 @@ function useData() {
 async function mutate(action, reload) {
   const result = await action()
   if (result.error) {
-    window.alert(result.error.message)
+    showToast(result.error.message, 'error')
     return false
   }
   await reload()
@@ -279,6 +279,134 @@ function Modal({ title, onClose, children }) {
   )
 }
 
+function Select({ value, onChange, options, label, className = '' }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef(null)
+  const selected = options.find((item) => item.value === value)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onPointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false)
+    }
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div ref={rootRef} className={`select ${className}`.trim()}>
+      <button
+        type="button"
+        className="select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span>{selected?.label || '请选择'}</span>
+        <span className="select-caret" aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="select-menu" role="listbox" aria-label={label}>
+          {options.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="option"
+              aria-selected={item.value === value}
+              className={`select-option ${item.value === value ? 'selected' : ''}`.trim()}
+              onClick={() => {
+                onChange(item.value)
+                setOpen(false)
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+let toastSink = () => {}
+let confirmSink = async () => false
+
+export function showToast(message, kind = 'info') {
+  toastSink(message, kind)
+}
+
+export function askConfirm(message) {
+  return confirmSink(message)
+}
+
+function ToastProvider({ children }) {
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    toastSink = (message, kind = 'info') => {
+      const id = `${Date.now()}-${Math.random()}`
+      setItems((prev) => [...prev, { id, message, kind }])
+      window.setTimeout(() => setItems((prev) => prev.filter((item) => item.id !== id)), 4200)
+    }
+    return () => {
+      toastSink = () => {}
+    }
+  }, [])
+
+  return (
+    <>
+      {children}
+      <div className="toast-stack" role="status" aria-live="polite">
+        {items.map((item) => (
+          <div key={item.id} className={`toast toast-${item.kind}`}>
+            <span>{item.message}</span>
+            <button type="button" onClick={() => setItems((prev) => prev.filter((entry) => entry.id !== item.id))} aria-label="关闭提示">×</button>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function ConfirmProvider({ children }) {
+  const [request, setRequest] = useState(null)
+
+  useEffect(() => {
+    confirmSink = (message) => new Promise((resolve) => setRequest({ message, resolve }))
+    return () => {
+      confirmSink = async () => false
+    }
+  }, [])
+
+  const answer = (value) => {
+    request?.resolve(value)
+    setRequest(null)
+  }
+
+  return (
+    <>
+      {children}
+      {request && (
+        <Modal title="请确认" onClose={() => answer(false)}>
+          <p className="confirm-message">{request.message}</p>
+          <div className="form-actions">
+            <button type="button" className="button secondary" onClick={() => answer(false)}>取消</button>
+            <button type="button" className="button danger" onClick={() => answer(true)}>确认</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
+
 function EmptyState({ title, description, action }) {
   return (
     <div className="empty-state">
@@ -295,17 +423,42 @@ function EmptyState({ title, description, action }) {
   )
 }
 
+function Goto({ to, className = '', children, ...rest }) {
+  const navigate = useNavigate()
+  return (
+    <button type="button" className={className} onClick={() => navigate(to)} {...rest}>
+      {children}
+    </button>
+  )
+}
+
+function NavButton({ to, end = false, className = '', children }) {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const active = end ? pathname === to : pathname === to || pathname.startsWith(`${to}/`)
+  return (
+    <button
+      type="button"
+      className={`${className} ${active ? 'active' : ''}`.trim()}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => navigate(to)}
+    >
+      {children}
+    </button>
+  )
+}
+
 function ProjectCard({ project, cardCount, onEdit, onDelete }) {
   return (
     <article className="project-card">
-      <Link className="project-card-link" to={`/projects/${project.id}`}>
+      <Goto className="project-card-link" to={`/projects/${project.id}`}>
         <div className="project-card-top">
           <ProjectIcon value={project.icon} />
           {project.featured && <span className="soft-badge">首页展示</span>}
         </div>
         <h3>{project.name}</h3>
         <p>{project.description || '还没有写项目说明。'}</p>
-      </Link>
+      </Goto>
       <div className="project-card-footer">
         <span className="muted">{cardCount} 张知识卡片</span>
         <span className="row-actions" onClick={(event) => event.stopPropagation()}>
@@ -381,7 +534,10 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        if (!form.name.trim()) return window.alert('请填写项目名称')
+        if (!form.name.trim()) {
+          showToast('请填写项目名称', 'error')
+          return
+        }
         onSubmit({
           ...form,
           name: form.name.trim(),
@@ -415,12 +571,10 @@ function ProjectForm({ initial, onSubmit, onCancel }) {
             ))}
           </div>
         </div>
-        <label className="field">
+        <div className="field">
           <span>状态</span>
-          <select value={form.status} onChange={(event) => update('status', event.target.value)}>
-            {STATUS_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-        </label>
+          <Select value={form.status} onChange={(value) => update('status', value)} options={STATUS_OPTIONS} label="项目状态" />
+        </div>
       </div>
       <label className="checkbox-field">
         <input type="checkbox" checked={Boolean(form.featured)} onChange={(event) => update('featured', event.target.checked)} />
@@ -458,8 +612,14 @@ function CardForm({ initial, projects, tags, onSubmit, onCancel, onDelete }) {
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        if (!form.title.trim()) return window.alert('请填写标题')
-        if (!/^https?:\/\/.+/.test(form.url || '')) return window.alert('请填写有效的 http(s) 链接')
+        if (!form.title.trim()) {
+          showToast('请填写标题', 'error')
+          return
+        }
+        if (!/^https?:\/\/.+/.test(form.url || '')) {
+          showToast('请填写有效的 http(s) 链接', 'error')
+          return
+        }
         onSubmit(
           { ...form, title: form.title.trim(), url: form.url.trim(), project_ids: form.project_ids || [] },
           selectedTags,
@@ -475,12 +635,10 @@ function CardForm({ initial, projects, tags, onSubmit, onCancel, onDelete }) {
         <input value={form.url} onChange={(event) => update('url', event.target.value)} placeholder="https://..." />
       </label>
       <div className="field-grid">
-        <label className="field">
+        <div className="field">
           <span>资源类型</span>
-          <select value={form.resource_type} onChange={(event) => update('resource_type', event.target.value)}>
-            {RESOURCE_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-        </label>
+          <Select value={form.resource_type} onChange={(value) => update('resource_type', value)} options={RESOURCE_TYPES} label="资源类型" />
+        </div>
         <div className="field">
           <span>所属项目（可多选）</span>
           {projects.length ? (
@@ -540,7 +698,10 @@ function TagForm({ initial, onSubmit, onCancel }) {
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        if (!form.name.trim()) return window.alert('请填写标签名称')
+        if (!form.name.trim()) {
+          showToast('请填写标签名称', 'error')
+          return
+        }
         onSubmit({ ...form, name: form.name.trim(), sort_order: Number(form.sort_order || 0) })
       }}
     >
@@ -587,9 +748,9 @@ function AppShell() {
           </div>
         </div>
         <nav className="side-nav">
-          <NavLink to="/" end><span>01</span> Dashboard</NavLink>
-          <NavLink to="/projects"><span>02</span> Projects</NavLink>
-          <NavLink to="/library"><span>03</span> Library</NavLink>
+          <NavButton to="/" end><span>01</span> Dashboard</NavButton>
+          <NavButton to="/projects"><span>02</span> Projects</NavButton>
+          <NavButton to="/library"><span>03</span> Library</NavButton>
         </nav>
         <div className="sidebar-foot">
           <div className="user-line">{user?.email || '本地演示'}</div>
@@ -600,9 +761,9 @@ function AppShell() {
       <main className="main-area">
         <div className="mobile-nav">
           <nav aria-label="主导航">
-            <NavLink to="/" end>首页</NavLink>
-            <NavLink to="/projects">项目</NavLink>
-            <NavLink to="/library">知识库</NavLink>
+            <NavButton to="/" end>首页</NavButton>
+            <NavButton to="/projects">项目</NavButton>
+            <NavButton to="/library">知识库</NavButton>
           </nav>
           <button className="text-button" onClick={signOut}>退出登录</button>
         </div>
@@ -664,8 +825,8 @@ function Dashboard() {
           <h1>探索，从一个问题开始。</h1>
           <p className="hero-sub">管理正在关注的主题，重新找到曾经留下的知识与资料。</p>
           <div className="hero-links">
-            <Link className="button primary" to="/projects">进入 Projects</Link>
-            <Link className="button secondary" to="/library">搜索 Library</Link>
+            <Goto className="button primary" to="/projects">进入 Projects</Goto>
+            <Goto className="button secondary" to="/library">搜索 Library</Goto>
           </div>
         </div>
         <svg className="hero-doodle" width="132" height="112" viewBox="0 0 132 112" fill="none" aria-hidden="true">
@@ -725,7 +886,7 @@ function Dashboard() {
             ))}
           </div>
         ) : (
-          <EmptyState title="还没有选择探索主题" description="到 Projects 勾选几个项目，它们就会出现在这里。" action={<Link className="button secondary" to="/projects">去选择</Link>} />
+          <EmptyState title="还没有选择探索主题" description="到 Projects 勾选几个项目，它们就会出现在这里。" action={<Goto className="button secondary" to="/projects">去选择</Goto>} />
         )}
       </section>
 
@@ -735,7 +896,7 @@ function Dashboard() {
             <p className="eyebrow">RECENTLY INDEXED</p>
             <h2>最近添加</h2>
           </div>
-          <Link className="text-button" to="/library">查看全部</Link>
+          <Goto className="text-button" to="/library">查看全部</Goto>
         </div>
         {cards.length ? (
           <div className="card-list">
@@ -760,7 +921,7 @@ function ProjectsPage() {
   const openEdit = (project) => setModal({ mode: 'edit', project })
 
   const remove = async (project) => {
-    if (!window.confirm(`删除项目「${project.name}」？关联会解除，卡片会保留在知识库和其他项目中。`)) return
+    if (!(await askConfirm(`删除项目「${project.name}」？关联会解除，卡片会保留在知识库和其他项目中。`))) return
     await mutate(() => api.deleteProject(user, project.id), reload)
   }
 
@@ -833,17 +994,17 @@ function ProjectDetailPage() {
   }
 
   const detach = async (card) => {
-    if (!window.confirm(`从「${project.name}」移除「${card.title}」？卡片会保留在知识库和其他项目中。`)) return
+    if (!(await askConfirm(`从「${project.name}」移除「${card.title}」？卡片会保留在知识库和其他项目中。`))) return
     await mutate(() => api.detachCardFromProject(user, id, card.id), reload)
   }
 
   if (loading) return <div className="loading">加载中…</div>
   if (error) return <div className="error-box">{error}</div>
-  if (!project) return <EmptyState title="项目不存在" description="它可能已经被删除。" action={<Link className="button secondary" to="/projects">返回 Projects</Link>} />
+  if (!project) return <EmptyState title="项目不存在" description="它可能已经被删除。" action={<Goto className="button secondary" to="/projects">返回 Projects</Goto>} />
 
   return (
     <div className="page">
-      <div className="breadcrumb"><Link to="/projects">PROJECTS</Link> / {project.name}</div>
+      <div className="breadcrumb"><Goto className="breadcrumb-link" to="/projects">PROJECTS</Goto> / {project.name}</div>
       <div className="page-head detail-head">
         <div>
           <h1 className="project-detail-title"><ProjectIcon value={project.icon} /> {project.name}</h1>
@@ -958,7 +1119,7 @@ function LibraryPage() {
   }
 
   const remove = async (card) => {
-    if (!window.confirm(`删除卡片「${card.title}」？`)) return
+    if (!(await askConfirm(`删除卡片「${card.title}」？`))) return
     const changed = await mutate(() => api.deleteCard(user, card.id), reload)
     if (changed) setCardModal(null)
   }
@@ -975,7 +1136,7 @@ function LibraryPage() {
           <p className="page-sub">忘记资料放在哪个项目时，从这里把它找回来。</p>
         </div>
         <div className="head-actions">
-          <Link className="button secondary" to="/library/tags">管理标签</Link>
+          <Goto className="button secondary" to="/library/tags">管理标签</Goto>
           <button className="button primary" onClick={() => setCardModal({ mode: 'new' })}>＋ 添加卡片</button>
         </div>
       </div>
@@ -986,21 +1147,10 @@ function LibraryPage() {
       </label>
 
       <div className="filter-bar">
-        <select value={type} onChange={(event) => setType(event.target.value)} aria-label="按资源类型筛选">
-          <option value="">全部类型</option>
-          {RESOURCE_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>
-        <select value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-label="按项目筛选">
-          <option value="">全部项目</option>
-          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </select>
-        <select value={tagId} onChange={(event) => setTagId(event.target.value)} aria-label="按标签筛选">
-          <option value="">全部标签</option>
-          {tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-        </select>
-        <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} aria-label="排序方式">
-          {CARD_SORT_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>
+        <Select value={type} onChange={setType} options={[{ value: '', label: '全部类型' }, ...RESOURCE_TYPES]} label="按资源类型筛选" />
+        <Select value={projectId} onChange={setProjectId} options={[{ value: '', label: '全部项目' }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} label="按项目筛选" />
+        <Select value={tagId} onChange={setTagId} options={[{ value: '', label: '全部标签' }, ...tags.map((tag) => ({ value: tag.id, label: tag.name }))]} label="按标签筛选" />
+        <Select value={sortOrder} onChange={setSortOrder} options={CARD_SORT_OPTIONS} label="排序方式" />
         {hasFilters && <button className="text-button" onClick={clearFilters}>清除筛选</button>}
       </div>
 
@@ -1061,7 +1211,7 @@ function TagManagePage() {
   }
 
   const remove = async (tag) => {
-    if (!window.confirm(`删除标签「${tag.name}」？关联卡片会保留，仅移除该标签。`)) return
+    if (!(await askConfirm(`删除标签「${tag.name}」？关联卡片会保留，仅移除该标签。`))) return
     await mutate(() => api.deleteTag(user, tag.id), reload)
   }
 
@@ -1096,7 +1246,7 @@ function TagManagePage() {
       ) : (
         <EmptyState title="还没有标签类别" description="先建几个类别，维护卡片时就可以直接选择了。" action={<button className="button primary" onClick={() => setModal({ mode: 'new' })}>新建标签</button>} />
       )}
-      <div className="back-link"><Link to="/library">← 返回 Library</Link></div>
+      <div className="back-link"><Goto to="/library">← 返回 Library</Goto></div>
       {modal && (
         <Modal title={modal.mode === 'new' ? '新建标签' : '编辑标签'} onClose={() => setModal(null)}>
           <TagForm
@@ -1115,6 +1265,7 @@ function TagManagePage() {
 
 function LoginPage() {
   const { user, signInWithPassword, notice, setNotice } = useAuth()
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -1124,10 +1275,13 @@ function LoginPage() {
     event.preventDefault()
     setBusy(true)
     setNotice('')
-    const { error } = await signInWithPassword(ownerEmail, password.trim())
+    const { error } = await signInWithPassword(email.trim(), password.trim())
     setBusy(false)
     if (error) setNotice(error.message)
-    else setPassword('')
+    else {
+      setPassword('')
+      setEmail('')
+    }
   }
 
   return (
@@ -1135,18 +1289,18 @@ function LoginPage() {
       <div className="login-card">
         <p className="eyebrow">PERSONAL GARDEN</p>
         <h1>欢迎回来</h1>
-        <p className="page-sub">个人站点不开放注册，账号已固定。</p>
-        <div className="fixed-account">
-          <span>账号</span>
-          <strong>{ownerEmail || '未配置所有者邮箱'}</strong>
-        </div>
+        <p className="page-sub">输入账号与密码。个人站点不开放注册。</p>
         <form onSubmit={submit}>
           <label className="field">
+            <span>邮箱</span>
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoFocus autoComplete="username" placeholder="you@example.com" />
+          </label>
+          <label className="field">
             <span>密码</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoFocus autoComplete="current-password" />
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" />
           </label>
           {notice && <p className="form-error">{notice}</p>}
-          <button className="button primary full" disabled={busy || !ownerEmail}>{busy ? '登录中…' : '登录'}</button>
+          <button className="button primary full" disabled={busy || !email.trim()}>{busy ? '登录中…' : '登录'}</button>
         </form>
       </div>
     </div>
@@ -1168,17 +1322,21 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/projects/:id" element={<ProjectDetailPage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/library/tags" element={<TagManagePage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <ToastProvider>
+          <ConfirmProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/library" element={<LibraryPage />} />
+                <Route path="/library/tags" element={<TagManagePage />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ConfirmProvider>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   )
